@@ -25,11 +25,11 @@ MetalExt = ["Metal"]
 oneAPIExt = ["oneAPI"]
 
 [compat]
-AMDGPU = "2"
-Atomix = "1"
-CUDA = "5"
-Metal = "1.9"
-Pkg = "1.11"
+# AMDGPU = "2"
+# Atomix = "1"
+# CUDA = "5"
+# Metal = "1.9"
+Pkg = "1.8"
 Preferences = "1.4"
-julia = "1.11"
-oneAPI = "=2.4"
+julia = "1.8"
+# oneAPI = "=2.4"

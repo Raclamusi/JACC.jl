@@ -33,7 +33,7 @@ default_stream() = default_stream(default_backend())
 
 create_stream() = create_stream(default_backend())
 
-@kwdef mutable struct LaunchSpec{Backend}
+Base.@kwdef mutable struct LaunchSpec{Backend}
     stream = default_stream(Backend())
     threads = 0
     blocks = 0
@@ -130,7 +130,7 @@ reduce_workspace() = reduce_workspace(default_backend(), default_float()())
 
 reduce_workspace(init::T) where {T} = reduce_workspace(default_backend(), init)
 
-@kwdef mutable struct ParallelReduce{Backend, T, Op, R, W <: ReduceWorkspace}
+Base.@kwdef mutable struct ParallelReduce{Backend, T, Op, R, W <: ReduceWorkspace}
     range::R = zeros(Int, R)
     op::Op = () -> nothing
     init::T = default_init(T, op)
