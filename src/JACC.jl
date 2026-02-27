@@ -278,6 +278,7 @@ end
 end
 
 include("threads/threads.jl")
+include("VectorEngine/VectorEngine.jl")
 
 include("macro.jl")
 

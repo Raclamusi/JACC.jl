@@ -1,22 +1,18 @@
 name = "JACC"
 uuid = "0979c8fe-16a4-4796-9b82-89a9f10403ea"
+authors = ["pedrovalerolara <valerolarap@ornl.gov>", "williamfgc <williamfgc@yahoo.com>", "PhilipFackler <facklerpw@ornl.gov>"]
 version = "1.0.0"
-authors = [
-    "pedrovalerolara <valerolarap@ornl.gov>", 
-    "williamfgc <williamfgc@yahoo.com>",
-    "PhilipFackler <facklerpw@ornl.gov>"
-]
 
 [deps]
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"
+VectorEngine = "466ee4d4-9101-4c4d-b8fc-4a5416b3306a"
 
-[weakdeps]
-AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
-oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
+[compat]
+Pkg = "1.8"
+Preferences = "1.4"
+julia = "1.8"
 
 [extensions]
 AMDGPUExt = ["AMDGPU"]
@@ -24,12 +20,8 @@ CUDAExt = ["CUDA"]
 MetalExt = ["Metal"]
 oneAPIExt = ["oneAPI"]
 
-[compat]
-# AMDGPU = "2"
-# Atomix = "1"
-# CUDA = "5"
-# Metal = "1.9"
-Pkg = "1.8"
-Preferences = "1.4"
-julia = "1.8"
-# oneAPI = "=2.4"
+[weakdeps]
+AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
+oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"

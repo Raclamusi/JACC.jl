@@ -29,7 +29,7 @@ end
 
 function _check_install_backend(backend::AbstractString)
     match = filter(
-        b -> backend == lowercase(b), ["CUDA", "AMDGPU", "oneAPI", "Metal"])
+        b -> backend == lowercase(b), ["CUDA", "AMDGPU", "oneAPI", "Metal", "VectorEngine"])
     if !isempty(match)
         _check_install_backend(match[], backend)
     end
@@ -59,7 +59,7 @@ end
 
 function _uninstall_backend(backend::AbstractString)
     match = filter(
-        b -> backend == lowercase(b), ["CUDA", "AMDGPU", "oneAPI", "Metal"])
+        b -> backend == lowercase(b), ["CUDA", "AMDGPU", "oneAPI", "Metal", "VectorEngine"])
     if !isempty(match)
         _check_uninstall_backend(match[], backend)
     end
@@ -67,7 +67,7 @@ end
 
 _uninstall_backends() = _uninstall_backend.(Preferences.Backend._LIST[])
 
-const supported_backends = ("threads", "cuda", "amdgpu", "oneapi", "metal")
+const supported_backends = ("threads", "cuda", "amdgpu", "oneapi", "metal", "vectorengine")
 
 baremodule Backend
 const threads = :threads
@@ -75,6 +75,7 @@ const cuda = :cuda
 const amdgpu = :amdgpu
 const oneapi = :oneapi
 const metal = :metal
+const vectorengine = :vectorengine
 end
 
 module Preferences
@@ -107,6 +108,10 @@ function backend_import(backend::String)
     end
     backend == "threads" && return quote
         @info "Threads backend loaded with $(Threads.nthreads()) threads"
+    end
+    backend == "vectorengine" && return quote
+        import VectorEngine
+        @info "VectorEngine backend loaded"
     end
 end
 
