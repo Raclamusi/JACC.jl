@@ -118,13 +118,13 @@ end
 
 @inline function JACC.parallel_reduce(
         f, ::VectorEngineBackend, N::Integer, x...; op, init)
-    function kernel(offset_i, N, id, init, ret, x...)
+    function kernel(offset_i, N, init, ret, x...)
         tmp = init
         @inbounds @vectorize for delta_i in 1:N
             i = offset_i + delta_i
             tmp = @inline op(tmp, f(i, x...))
         end
-        @inbounds ret[id] = tmp
+        @inbounds ret[] = tmp
         return
     end
     ns = min(N, nstreams())
@@ -132,7 +132,7 @@ end
     for s in 0:ns-1
         offset_i = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_i
-        @veda stream=s kernel(offset_i, partial_n, s + 1, init, ret, x...)
+        @veda stream=s kernel(offset_i, partial_n, init, view(ret, s + 1), x...)
     end
     synchronize()
     return reduce(op, collect(ret))
@@ -146,7 +146,7 @@ end
 
 @inline function JACC.parallel_reduce(f, ::VectorEngineBackend,
         (M, N)::NTuple{2, Integer}, x...; op, init)
-    function kernel(offset_j, (M, N), id, init, ret, x...)
+    function kernel(offset_j, (M, N), init, ret, x...)
         tmp = init
         @inbounds for delta_j in 1:N
             j = offset_j + delta_j
@@ -154,7 +154,7 @@ end
                 tmp = @inline op(tmp, f(i, j, x...))
             end
         end
-        @inbounds ret[id] = tmp
+        @inbounds ret[] = tmp
         return
     end
     ns = min(N, nstreams())
@@ -162,7 +162,7 @@ end
     for s in 0:ns-1
         offset_j = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_j
-        @veda stream=s kernel(offset_j, (M, partial_n), s + 1, init, ret, x...)
+        @veda stream=s kernel(offset_j, (M, partial_n), init, view(ret, s + 1), x...)
     end
     synchronize()
     return reduce(op, collect(ret))
