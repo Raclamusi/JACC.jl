@@ -118,6 +118,10 @@ default_init(::Type{T}, ::typeof(+)) where {T} = zero(T)
 default_init(::Type{T}, ::typeof(*)) where {T} = one(T)
 default_init(::Type{T}, ::typeof(max)) where {T} = typemin(T)
 default_init(::Type{T}, ::typeof(min)) where {T} = typemax(T)
+default_init(::Type{T}, ::typeof(Base.FastMath.add_fast)) where {T} = zero(T)
+default_init(::Type{T}, ::typeof(Base.FastMath.mul_fast)) where {T} = one(T)
+default_init(::Type{T}, ::typeof(Base.FastMath.max_fast)) where {T} = typemin(T)
+default_init(::Type{T}, ::typeof(Base.FastMath.min_fast)) where {T} = typemax(T)
 default_init(op::Function) = default_init(default_float(), op)
 
 abstract type ReduceWorkspace end
