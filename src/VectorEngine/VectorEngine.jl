@@ -2,7 +2,6 @@ module VectorEngineImpl
 
 import JACC
 import JACC: LaunchSpec
-ENV["VE_CONTEXT_MODE"] = "SCALAR"
 using VectorEngine
 using VectorEngine.VEDA
 
