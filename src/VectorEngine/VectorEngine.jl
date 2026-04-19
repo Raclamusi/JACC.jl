@@ -138,6 +138,18 @@ end
 
 @inline JACC.get_result(wk::VectorEngineReduceWorkspace{T}) where {T} = collect(wk.ret)[]
 
+const reduce_buffers = Dict{DataType, VectorEngine.VEVector}()
+@inline function get_reduce_buffer(::Type{T}, n::Integer) where {T}
+    buf = get!(reduce_buffers, T) do
+        VEArray{T}(undef, n)
+    end::VEArray{T, 1}
+    if length(buf) < n
+        buf = VEArray{T}(undef, n)
+        reduce_buffers[T] = buf
+    end
+    return view(buf, 1:n)
+end
+
 @inline function JACC._parallel_reduce!(
         reducer::JACC.ParallelReduce{VectorEngineBackend}, N::Integer, f, x...)
     # TODO
@@ -155,7 +167,7 @@ end
         return
     end
     ns = min(N, nstreams())
-    ret = VEArray{typeof(init)}(undef, ns)
+    ret = get_reduce_buffer(typeof(init), ns)
     args = map(vedaconvert, (init, x...))
     veargs = VEDA.VEArgs()
     for i in eachindex(args)
@@ -195,7 +207,7 @@ end
         return
     end
     ns = min(N, nstreams())
-    ret = VEArray{typeof(init)}(undef, ns)
+    ret = get_reduce_buffer(typeof(init), ns)
     args = map(vedaconvert, (init, x...))
     veargs = VEDA.VEArgs()
     for i in eachindex(args)
