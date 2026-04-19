@@ -35,11 +35,20 @@ end
         return
     end
     ns = min(N, nstreams())
+    args = map(vedaconvert, x)
+    veargs = VEDA.VEArgs()
+    for i in eachindex(args)
+        veargs[i+1] = args[i]
+    end
+    func = vefunction(kernel, Tuple{Int, Int, map(typeof, args)...})
     for s in 0:ns-1
         offset_i = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_i
-        @veda stream=s kernel(offset_i, partial_n, x...)
+        veargs[0] = offset_i
+        veargs[1] = partial_n
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
     end
+    VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
 end
 
@@ -60,11 +69,20 @@ end
         return
     end
     ns = min(N, nstreams())
+    args = map(vedaconvert, x)
+    veargs = VEDA.VEArgs()
+    for i in eachindex(args)
+        veargs[i+1] = args[i]
+    end
+    func = vefunction(kernel, Tuple{Int, Tuple{typeof(M), Int}, map(typeof, args)...})
     for s in 0:ns-1
         offset_j = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_j
-        @veda stream=s kernel(offset_j, (M, partial_n), x...)
+        veargs[0] = offset_j
+        veargs[1] = (M, partial_n)
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
     end
+    VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
 end
 
@@ -87,11 +105,20 @@ end
         return
     end
     ns = min(N, nstreams())
+    args = map(vedaconvert, x)
+    veargs = VEDA.VEArgs()
+    for i in eachindex(args)
+        veargs[i+1] = args[i]
+    end
+    func = vefunction(kernel, Tuple{Int, Tuple{typeof(L), typeof(M), Int}, map(typeof, args)...})
     for s in 0:ns-1
         offset_k = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_k
-        @veda stream=s kernel(offset_k, (L, M, partial_n), x...)
+        veargs[0] = offset_k
+        veargs[1] = (L, M, partial_n)
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
     end
+    VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
 end
 
@@ -118,7 +145,7 @@ end
 
 @inline function JACC.parallel_reduce(
         f, ::VectorEngineBackend, N::Integer, x...; op, init)
-    function kernel(offset_i, N, init, ret, x...)
+    function kernel(offset_i, N, ret, init, x...)
         tmp = init
         @inbounds @vectorize for delta_i in 1:N
             i = offset_i + delta_i
@@ -129,11 +156,21 @@ end
     end
     ns = min(N, nstreams())
     ret = VEArray{typeof(init)}(undef, ns)
+    args = map(vedaconvert, (init, x...))
+    veargs = VEDA.VEArgs()
+    for i in eachindex(args)
+        veargs[i+2] = args[i]
+    end
+    func = vefunction(kernel, Tuple{Int, Int, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...})
     for s in 0:ns-1
         offset_i = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_i
-        @veda stream=s kernel(offset_i, partial_n, init, view(ret, s + 1), x...)
+        veargs[0] = offset_i
+        veargs[1] = partial_n
+        veargs[2] = vedaconvert(view(ret, s + 1))
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
     end
+    VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
     return reduce(op, collect(ret))
 end
@@ -146,7 +183,7 @@ end
 
 @inline function JACC.parallel_reduce(f, ::VectorEngineBackend,
         (M, N)::NTuple{2, Integer}, x...; op, init)
-    function kernel(offset_j, (M, N), init, ret, x...)
+    function kernel(offset_j, (M, N), ret, init, x...)
         tmp = init
         @inbounds for delta_j in 1:N
             j = offset_j + delta_j
@@ -159,11 +196,21 @@ end
     end
     ns = min(N, nstreams())
     ret = VEArray{typeof(init)}(undef, ns)
+    args = map(vedaconvert, (init, x...))
+    veargs = VEDA.VEArgs()
+    for i in eachindex(args)
+        veargs[i+2] = args[i]
+    end
+    func = vefunction(kernel, Tuple{Int, Tuple{typeof(M), Int}, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...})
     for s in 0:ns-1
         offset_j = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_j
-        @veda stream=s kernel(offset_j, (M, partial_n), init, view(ret, s + 1), x...)
+        veargs[0] = offset_j
+        veargs[1] = (M, partial_n)
+        veargs[2] = vedaconvert(view(ret, s + 1))
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
     end
+    VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
     return reduce(op, collect(ret))
 end
