@@ -197,9 +197,9 @@ end
         (M, N)::NTuple{2, Integer}, x...; op, init)
     function kernel(offset_j, (M, N), ret, init, x...)
         tmp = init
-        @inbounds for delta_j in 1:N
-            j = offset_j + delta_j
-            @vectorize for i in 1:M
+        @inbounds @vectorize for i in 1:M
+            for delta_j in 1:N
+                j = offset_j + delta_j
                 tmp = @inline op(tmp, f(i, j, x...))
             end
         end
