@@ -184,7 +184,7 @@ end
     end
     VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
-    return reduce(op, collect(ret))
+    return reduce(op, collect(ret); init)
 end
 
 @inline function JACC._parallel_reduce!(
@@ -224,7 +224,7 @@ end
     end
     VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
-    return reduce(op, collect(ret))
+    return reduce(op, collect(ret); init)
 end
 
 @inline function JACC.parallel_reduce(
