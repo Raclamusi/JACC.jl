@@ -26,9 +26,26 @@ JACC.create_stream(::VectorEngineBackend) = nothing
     return count_ref[]
 end
 
+const experimental_use_packed_ref = Ref(false)
+function __init__()
+    if get(ENV, "JACC_VE_USE_PACKED", "0") in ("1", "true", "True", "TRUE")
+        experimental_use_packed_ref[] = true
+    end
+end
+@inline function experimental_use_packed()
+    return experimental_use_packed_ref[]
+end
+
 @inline function JACC.parallel_for(f, ::VectorEngineBackend, N::Integer, x...)
     function kernel(offset_i, N, x...)
         @vectorize for delta_i in 1:N
+            i = offset_i + delta_i
+            @inline f(i, x...)
+        end
+        return
+    end
+    function experimental_packed_kernel(offset_i, N, x...)
+        @vectorize length=512 for delta_i in 1:N
             i = offset_i + delta_i
             @inline f(i, x...)
         end
@@ -40,7 +57,11 @@ end
     for i in eachindex(args)
         veargs[i+1] = args[i]
     end
-    func = vefunction(kernel, Tuple{Int, Int, map(typeof, args)...})
+    if experimental_use_packed()
+        func = vefunction(experimental_packed_kernel, Tuple{Int, Int, map(typeof, args)...})
+    else
+        func = vefunction(kernel, Tuple{Int, Int, map(typeof, args)...})
+    end
     for s in 0:ns-1
         offset_i = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_i
