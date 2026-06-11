@@ -28,7 +28,7 @@ end
 
 @inline function JACC.parallel_for(f, ::VectorEngineBackend, N::Integer, x...)
     function kernel(offset_i, N, x...)
-        @inbounds @vectorize for delta_i in 1:N
+        @vectorize for delta_i in 1:N
             i = offset_i + delta_i
             @inline f(i, x...)
         end
@@ -60,7 +60,7 @@ end
 @inline function JACC.parallel_for(
         f, ::VectorEngineBackend, (M, N)::NTuple{2, Integer}, x...)
     function kernel(offset_j, (M, N), x...)
-        @inbounds for delta_j in 1:N
+        for delta_j in 1:N
             j = offset_j + delta_j
             @vectorize for i in 1:M
                 @inline f(i, j, x...)
@@ -94,7 +94,7 @@ end
 @inline function JACC.parallel_for(
         f, ::VectorEngineBackend, (L, M, N)::NTuple{3, Integer}, x...)
     function kernel(offset_k, (L, M, N), x...)
-        @inbounds for delta_k in 1:N
+        for delta_k in 1:N
             k = offset_k + delta_k
             for j in 1:M
                 @vectorize for i in 1:L
@@ -159,7 +159,7 @@ end
         f, ::VectorEngineBackend, N::Integer, x...; op, init)
     function kernel(offset_i, N, ret, init, x...)
         tmp = init
-        @inbounds @vectorize for delta_i in 1:N
+        @vectorize for delta_i in 1:N
             i = offset_i + delta_i
             tmp = @inline op(tmp, f(i, x...))
         end
@@ -197,7 +197,7 @@ end
         (M, N)::NTuple{2, Integer}, x...; op, init)
     function kernel(offset_j, (M, N), ret, init, x...)
         tmp = init
-        @inbounds @vectorize for i in 1:M
+        @vectorize for i in 1:M
             for delta_j in 1:N
                 j = offset_j + delta_j
                 tmp = @inline op(tmp, f(i, j, x...))
