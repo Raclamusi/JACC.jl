@@ -26,9 +26,27 @@ JACC.create_stream(::VectorEngineBackend) = nothing
     return count_ref[]
 end
 
+const use_packed_vector_ref = Ref(false)
+@inline function use_packed_vector()
+    return use_packed_vector_ref[]
+end
+
+function __init__()
+    if get(ENV, "JACC_VE_USE_PACKED", "0") in ("1", "true", "True", "TRUE")
+        use_packed_vector_ref[] = true
+    end
+end
+
 @inline function JACC.parallel_for(f, ::VectorEngineBackend, N::Integer, x...)
     function kernel(offset_i, N, x...)
         @vectorize for delta_i in 1:N
+            i = offset_i + delta_i
+            @inline f(i, x...)
+        end
+        return
+    end
+    function packed_kernel(offset_i, N, x...)
+        @vectorize length=512 for delta_i in 1:N
             i = offset_i + delta_i
             @inline f(i, x...)
         end
@@ -40,7 +58,12 @@ end
     for i in eachindex(args)
         veargs[i+1] = args[i]
     end
-    func = vefunction(kernel, Tuple{Int, Int, map(typeof, args)...})
+    kernel_tt = Tuple{Int, Int, map(typeof, args)...}
+    if use_packed_vector()
+        func = vefunction(packed_kernel, kernel_tt)
+    else
+        func = vefunction(kernel, kernel_tt)
+    end
     for s in 0:ns-1
         offset_i = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_i
@@ -68,13 +91,27 @@ end
         end
         return
     end
+    function packed_kernel(offset_j, (M, N), x...)
+        for delta_j in 1:N
+            j = offset_j + delta_j
+            @vectorize length=512 for i in 1:M
+                @inline f(i, j, x...)
+            end
+        end
+        return
+    end
     ns = min(N, nstreams())
     args = map(vedaconvert, x)
     veargs = VEDA.VEArgs()
     for i in eachindex(args)
         veargs[i+1] = args[i]
     end
-    func = vefunction(kernel, Tuple{Int, Tuple{typeof(M), Int}, map(typeof, args)...})
+    kernel_tt = Tuple{Int, Tuple{typeof(M), Int}, map(typeof, args)...}
+    if use_packed_vector()
+        func = vefunction(packed_kernel, kernel_tt)
+    else
+        func = vefunction(kernel, kernel_tt)
+    end
     for s in 0:ns-1
         offset_j = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_j
@@ -104,13 +141,29 @@ end
         end
         return
     end
+    function packed_kernel(offset_k, (L, M, N), x...)
+        for delta_k in 1:N
+            k = offset_k + delta_k
+            for j in 1:M
+                @vectorize length=512 for i in 1:L
+                    @inline f(i, j, k, x...)
+                end
+            end
+        end
+        return
+    end
     ns = min(N, nstreams())
     args = map(vedaconvert, x)
     veargs = VEDA.VEArgs()
     for i in eachindex(args)
         veargs[i+1] = args[i]
     end
-    func = vefunction(kernel, Tuple{Int, Tuple{typeof(L), typeof(M), Int}, map(typeof, args)...})
+    kernel_tt = Tuple{Int, Tuple{typeof(L), typeof(M), Int}, map(typeof, args)...}
+    if use_packed_vector()
+        func = vefunction(packed_kernel, kernel_tt)
+    else
+        func = vefunction(kernel, kernel_tt)
+    end
     for s in 0:ns-1
         offset_k = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_k
@@ -166,6 +219,15 @@ end
         @inbounds ret[] = tmp
         return
     end
+    function packed_kernel(offset_i, N, ret, init, x...)
+        tmp = init
+        @vectorize length=512 for delta_i in 1:N
+            i = offset_i + delta_i
+            tmp = @inline op(tmp, f(i, x...))
+        end
+        @inbounds ret[] = tmp
+        return
+    end
     ns = min(N, nstreams())
     ret = get_reduce_buffer(typeof(init), ns)
     args = map(vedaconvert, (init, x...))
@@ -173,7 +235,12 @@ end
     for i in eachindex(args)
         veargs[i+2] = args[i]
     end
-    func = vefunction(kernel, Tuple{Int, Int, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...})
+    kernel_tt = Tuple{Int, Int, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
+    if use_packed_vector()
+        func = vefunction(packed_kernel, kernel_tt)
+    else
+        func = vefunction(kernel, kernel_tt)
+    end
     for s in 0:ns-1
         offset_i = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_i
@@ -206,6 +273,17 @@ end
         @inbounds ret[] = tmp
         return
     end
+    function packed_kernel(offset_j, (M, N), ret, init, x...)
+        tmp = init
+        @vectorize length=512 for i in 1:M
+            for delta_j in 1:N
+                j = offset_j + delta_j
+                tmp = @inline op(tmp, f(i, j, x...))
+            end
+        end
+        @inbounds ret[] = tmp
+        return
+    end
     ns = min(N, nstreams())
     ret = get_reduce_buffer(typeof(init), ns)
     args = map(vedaconvert, (init, x...))
@@ -213,7 +291,12 @@ end
     for i in eachindex(args)
         veargs[i+2] = args[i]
     end
-    func = vefunction(kernel, Tuple{Int, Tuple{typeof(M), Int}, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...})
+    kernel_tt = Tuple{Int, Tuple{typeof(M), Int}, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
+    if use_packed_vector()
+        func = vefunction(packed_kernel, kernel_tt)
+    else
+        func = vefunction(kernel, kernel_tt)
+    end
     for s in 0:ns-1
         offset_j = s * N ÷ ns
         partial_n = (s + 1) * N ÷ ns - offset_j
