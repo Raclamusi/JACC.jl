@@ -182,7 +182,7 @@ end
         partial_n = (kernel_id + 1) * dims[end] ÷ nkernels - offset
         veargs[0] = convert(Int, offset)
         veargs[1] = convert(typeof(dims), (dims[1:end-1]..., partial_n))
-        veargs[2] = vedaconvert(view(ret, kernel_id + 1))
+        veargs[2] = vedaconvert(@inbounds view(ret, kernel_id + 1))
         VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, kernel_id, veargs.handle)
     end
     VEDA.vedaArgsDestroy(veargs.handle)
