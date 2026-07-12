@@ -27,14 +27,14 @@ JACC.create_stream(::VectorEngineBackend) = nothing
     return count_ref[]
 end
 
-const use_packed_vector_ref = Ref(false)
-@inline function use_packed_vector()
-    return use_packed_vector_ref[]
+const _use_packed_vector_ref = Ref(false)
+@inline function _use_packed_vector()
+    return _use_packed_vector_ref[]
 end
 
 function __init__()
     if get(ENV, "JACC_VE_USE_PACKED", "0") in ("1", "true", "True", "TRUE")
-        use_packed_vector_ref[] = true
+        _use_packed_vector_ref[] = true
     end
 end
 
@@ -46,7 +46,7 @@ end
     JACC.parallel_for(f, spec, (N,), x...)
 end
 
-@generated function parallel_for_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
+@generated function _parallel_for_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
     quote
         @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
             @vectorize for i in 1:dims[1]
@@ -58,7 +58,7 @@ end
     end
 end
 
-@generated function parallel_for_packed_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
+@generated function _parallel_for_packed_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
     quote
         @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
             @vectorize length=512 for i in 1:dims[1]
@@ -79,10 +79,10 @@ end
         veargs[i+1] = args[i]
     end
     kernel_tt = Tuple{typeof(f), Int, typeof(dims), map(typeof, args)...}
-    if use_packed_vector()
-        func = vefunction(parallel_for_packed_kernel, kernel_tt)
+    if _use_packed_vector()
+        func = vefunction(_parallel_for_packed_kernel, kernel_tt)
     else
-        func = vefunction(parallel_for_kernel, kernel_tt)
+        func = vefunction(_parallel_for_kernel, kernel_tt)
     end
     for kernel_id in 0:nkernels-1
         offset = kernel_id * dims[end] ÷ nkernels
@@ -110,14 +110,14 @@ end
 
 @inline JACC.get_result(wk::VectorEngineReduceWorkspace{T}) where {T} = collect(wk.ret)[]
 
-const reduce_buffers = Dict{DataType, VectorEngine.VEVector}()
-@inline function get_reduce_buffer(::Type{T}, n::Integer) where {T}
-    buf = get!(reduce_buffers, T) do
+const _reduce_buffers = Dict{DataType, VectorEngine.VEVector}()
+@inline function _get_reduce_buffer(::Type{T}, n::Integer) where {T}
+    buf = get!(_reduce_buffers, T) do
         VEArray{T}(undef, n)
     end::VEArray{T, 1}
     if length(buf) < n
         buf = VEArray{T}(undef, n)
-        reduce_buffers[T] = buf
+        _reduce_buffers[T] = buf
     end
     return view(buf, 1:n)
 end
@@ -134,7 +134,7 @@ end
     # TODO
 end
 
-@generated function parallel_reduce_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
+@generated function _parallel_reduce_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
     quote
         tmp = init
         @vectorize for i in 1:dims[1]
@@ -148,7 +148,7 @@ end
     end
 end
 
-@generated function parallel_reduce_packed_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
+@generated function _parallel_reduce_packed_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
     quote
         tmp = init
         @vectorize length=512 for i in 1:dims[1]
@@ -164,7 +164,7 @@ end
 
 @inline function JACC.parallel_reduce(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...; op, init) where {Rank}
     nkernels = min(dims[end], nstreams())
-    ret = get_reduce_buffer(typeof(init), nkernels)
+    ret = _get_reduce_buffer(typeof(init), nkernels)
     args = map(vedaconvert, (init, x...))
     veargs = VEDA.VEArgs()
     # veargs[[0,1,2]] are set for each kernel launch
@@ -172,10 +172,10 @@ end
         veargs[i+2] = args[i]
     end
     kernel_tt = Tuple{typeof(f), typeof(op), Int, typeof(dims), VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
-    if use_packed_vector()
-        func = vefunction(parallel_reduce_packed_kernel, kernel_tt)
+    if _use_packed_vector()
+        func = vefunction(_parallel_reduce_packed_kernel, kernel_tt)
     else
-        func = vefunction(parallel_reduce_kernel, kernel_tt)
+        func = vefunction(_parallel_reduce_kernel, kernel_tt)
     end
     for kernel_id in 0:nkernels-1
         offset = kernel_id * dims[end] ÷ nkernels
