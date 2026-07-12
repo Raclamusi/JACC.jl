@@ -21,7 +21,7 @@ JACC.default_stream(::VectorEngineBackend) = nothing
 
 JACC.create_stream(::VectorEngineBackend) = nothing
 
-@inline function nstreams()
+@inline function _nstreams()
     count_ref = Ref{Cint}()
     VEDA.@check VEDA.vedaCtxStreamCnt(count_ref)
     return count_ref[]
@@ -71,7 +71,7 @@ end
 end
 
 @inline function JACC.parallel_for(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...) where {Rank}
-    nkernels = min(dims[end], nstreams())
+    nkernels = min(dims[end], _nstreams())
     args = map(vedaconvert, x)
     veargs = VEDA.VEArgs()
     # veargs[[0,1]] are set for each kernel launch
@@ -163,7 +163,7 @@ end
 end
 
 @inline function JACC.parallel_reduce(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...; op, init) where {Rank}
-    nkernels = min(dims[end], nstreams())
+    nkernels = min(dims[end], _nstreams())
     ret = _get_reduce_buffer(typeof(init), nkernels)
     args = map(vedaconvert, (init, x...))
     veargs = VEDA.VEArgs()
