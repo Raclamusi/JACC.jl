@@ -119,7 +119,7 @@ const _reduce_buffers = Dict{DataType, VectorEngine.VEVector}()
         buf = VEArray{T}(undef, n)
         _reduce_buffers[T] = buf
     end
-    return view(buf, 1:n)
+    return @inbounds view(buf, Base.OneTo(n))
 end
 
 @inline function JACC._parallel_reduce!(reducer::JACC.ParallelReduce{VectorEngineBackend}, N::Integer, f, x...)
