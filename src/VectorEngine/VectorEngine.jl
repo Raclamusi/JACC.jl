@@ -15,7 +15,7 @@ include("array.jl")
 # include("async.jl")
 # include("experimental/experimental.jl")
 
-JACC.synchronize(::VectorEngineBackend) = synchronize()
+JACC.synchronize(::VectorEngineBackend) = VectorEngine.synchronize()
 
 JACC.default_stream(::VectorEngineBackend) = nothing
 
@@ -92,7 +92,7 @@ end
         VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, kernel_id, veargs.handle)
     end
     VEDA.vedaArgsDestroy(veargs.handle)
-    synchronize()
+    VectorEngine.synchronize()
 end
 
 @inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend}, dims::NTuple{Rank, Integer}, x...) where {Rank}
@@ -186,7 +186,7 @@ end
         VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, kernel_id, veargs.handle)
     end
     VEDA.vedaArgsDestroy(veargs.handle)
-    synchronize()
+    VectorEngine.synchronize()
     return reduce(op, collect(ret); init)
 end
 
