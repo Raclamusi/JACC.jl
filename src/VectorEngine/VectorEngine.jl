@@ -4,6 +4,7 @@ import JACC
 import JACC: LaunchSpec
 using VectorEngine
 using VectorEngine.VEDA
+using Base.Cartesian
 
 struct VectorEngineBackend end
 
@@ -38,145 +39,63 @@ function __init__()
 end
 
 @inline function JACC.parallel_for(f, ::VectorEngineBackend, N::Integer, x...)
-    function kernel(offset_i, N, x...)
-        @vectorize for delta_i in 1:N
-            i = offset_i + delta_i
-            @inline f(i, x...)
+    JACC.parallel_for(f, VectorEngineBackend(), (N,), x...)
+end
+
+@inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend}, N::Integer, x...)
+    JACC.parallel_for(f, spec, (N,), x...)
+end
+
+@generated function parallel_for_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
+    quote
+        @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
+            @vectorize for i in 1:dims[1]
+                $(Rank == 1 ? :(i += offset) : nothing)
+                @inline f(i, $(map(d -> Symbol("j_", d), 1:Rank-1)...), x...)
+            end
         end
         return
     end
-    function packed_kernel(offset_i, N, x...)
-        @vectorize length=512 for delta_i in 1:N
-            i = offset_i + delta_i
-            @inline f(i, x...)
+end
+
+@generated function parallel_for_packed_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
+    quote
+        @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
+            @vectorize length=512 for i in 1:dims[1]
+                $(Rank == 1 ? :(i += offset) : nothing)
+                @inline f(i, $(map(d -> Symbol("j_", d), 1:Rank-1)...), x...)
+            end
         end
         return
     end
-    ns = min(N, nstreams())
+end
+
+@inline function JACC.parallel_for(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...) where {Rank}
+    nkernels = min(dims[end], nstreams())
     args = map(vedaconvert, x)
     veargs = VEDA.VEArgs()
+    # veargs[[0,1]] are set for each kernel launch
     for i in eachindex(args)
         veargs[i+1] = args[i]
     end
-    kernel_tt = Tuple{Int, Int, map(typeof, args)...}
+    kernel_tt = Tuple{typeof(f), Int, typeof(dims), map(typeof, args)...}
     if use_packed_vector()
-        func = vefunction(packed_kernel, kernel_tt)
+        func = vefunction(parallel_for_packed_kernel, kernel_tt)
     else
-        func = vefunction(kernel, kernel_tt)
+        func = vefunction(parallel_for_kernel, kernel_tt)
     end
-    for s in 0:ns-1
-        offset_i = s * N ÷ ns
-        partial_n = (s + 1) * N ÷ ns - offset_i
-        veargs[0] = offset_i
-        veargs[1] = partial_n
-        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
+    for kernel_id in 0:nkernels-1
+        offset = kernel_id * dims[end] ÷ nkernels
+        partial_n = (kernel_id + 1) * dims[end] ÷ nkernels - offset
+        veargs[0] = convert(Int, offset)
+        veargs[1] = convert(typeof(dims), (dims[1:end-1]..., partial_n))
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, kernel_id, veargs.handle)
     end
     VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
 end
 
-@inline function JACC.parallel_for(
-        f, spec::LaunchSpec{VectorEngineBackend}, N::Integer, x...)
-    # TODO
-end
-
-@inline function JACC.parallel_for(
-        f, ::VectorEngineBackend, (M, N)::NTuple{2, Integer}, x...)
-    function kernel(offset_j, (M, N), x...)
-        for delta_j in 1:N
-            j = offset_j + delta_j
-            @vectorize for i in 1:M
-                @inline f(i, j, x...)
-            end
-        end
-        return
-    end
-    function packed_kernel(offset_j, (M, N), x...)
-        for delta_j in 1:N
-            j = offset_j + delta_j
-            @vectorize length=512 for i in 1:M
-                @inline f(i, j, x...)
-            end
-        end
-        return
-    end
-    ns = min(N, nstreams())
-    args = map(vedaconvert, x)
-    veargs = VEDA.VEArgs()
-    for i in eachindex(args)
-        veargs[i+1] = args[i]
-    end
-    kernel_tt = Tuple{Int, Tuple{typeof(M), Int}, map(typeof, args)...}
-    if use_packed_vector()
-        func = vefunction(packed_kernel, kernel_tt)
-    else
-        func = vefunction(kernel, kernel_tt)
-    end
-    for s in 0:ns-1
-        offset_j = s * N ÷ ns
-        partial_n = (s + 1) * N ÷ ns - offset_j
-        veargs[0] = offset_j
-        veargs[1] = (M, partial_n)
-        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
-    end
-    VEDA.vedaArgsDestroy(veargs.handle)
-    synchronize()
-end
-
-@inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend},
-        (M, N)::NTuple{2, Integer}, x...)
-    # TODO
-end
-
-@inline function JACC.parallel_for(
-        f, ::VectorEngineBackend, (L, M, N)::NTuple{3, Integer}, x...)
-    function kernel(offset_k, (L, M, N), x...)
-        for delta_k in 1:N
-            k = offset_k + delta_k
-            for j in 1:M
-                @vectorize for i in 1:L
-                    @inline f(i, j, k, x...)
-                end
-            end
-        end
-        return
-    end
-    function packed_kernel(offset_k, (L, M, N), x...)
-        for delta_k in 1:N
-            k = offset_k + delta_k
-            for j in 1:M
-                @vectorize length=512 for i in 1:L
-                    @inline f(i, j, k, x...)
-                end
-            end
-        end
-        return
-    end
-    ns = min(N, nstreams())
-    args = map(vedaconvert, x)
-    veargs = VEDA.VEArgs()
-    for i in eachindex(args)
-        veargs[i+1] = args[i]
-    end
-    kernel_tt = Tuple{Int, Tuple{typeof(L), typeof(M), Int}, map(typeof, args)...}
-    if use_packed_vector()
-        func = vefunction(packed_kernel, kernel_tt)
-    else
-        func = vefunction(kernel, kernel_tt)
-    end
-    for s in 0:ns-1
-        offset_k = s * N ÷ ns
-        partial_n = (s + 1) * N ÷ ns - offset_k
-        veargs[0] = offset_k
-        veargs[1] = (L, M, partial_n)
-        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
-    end
-    VEDA.vedaArgsDestroy(veargs.handle)
-    synchronize()
-end
-
-@inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend},
-        (L, M, N)::NTuple{3, Integer}, x...)
+@inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend}, dims::NTuple{Rank, Integer}, x...) where {Rank}
     # TODO
 end
 
@@ -203,120 +122,72 @@ const reduce_buffers = Dict{DataType, VectorEngine.VEVector}()
     return view(buf, 1:n)
 end
 
-@inline function JACC._parallel_reduce!(
-        reducer::JACC.ParallelReduce{VectorEngineBackend}, N::Integer, f, x...)
+@inline function JACC._parallel_reduce!(reducer::JACC.ParallelReduce{VectorEngineBackend}, N::Integer, f, x...)
+    JACC._parallel_reduce!(reducer, (N,), f, x...)
+end
+
+@inline function JACC.parallel_reduce(f, ::VectorEngineBackend, N::Integer, x...; op, init)
+    JACC.parallel_reduce(f, VectorEngineBackend(), (N,), x...; op, init)
+end
+
+@inline function JACC._parallel_reduce!(reducer::JACC.ParallelReduce{VectorEngineBackend}, dims::NTuple{Rank, Integer}, f, x...) where {Rank}
     # TODO
 end
 
-@inline function JACC.parallel_reduce(
-        f, ::VectorEngineBackend, N::Integer, x...; op, init)
-    function kernel(offset_i, N, ret, init, x...)
+@generated function parallel_reduce_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
+    quote
         tmp = init
-        @vectorize for delta_i in 1:N
-            i = offset_i + delta_i
-            tmp = @inline op(tmp, f(i, x...))
-        end
-        @inbounds ret[] = tmp
-        return
-    end
-    function packed_kernel(offset_i, N, ret, init, x...)
-        tmp = init
-        @vectorize length=512 for delta_i in 1:N
-            i = offset_i + delta_i
-            tmp = @inline op(tmp, f(i, x...))
-        end
-        @inbounds ret[] = tmp
-        return
-    end
-    ns = min(N, nstreams())
-    ret = get_reduce_buffer(typeof(init), ns)
-    args = map(vedaconvert, (init, x...))
-    veargs = VEDA.VEArgs()
-    for i in eachindex(args)
-        veargs[i+2] = args[i]
-    end
-    kernel_tt = Tuple{Int, Int, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
-    if use_packed_vector()
-        func = vefunction(packed_kernel, kernel_tt)
-    else
-        func = vefunction(kernel, kernel_tt)
-    end
-    for s in 0:ns-1
-        offset_i = s * N ÷ ns
-        partial_n = (s + 1) * N ÷ ns - offset_i
-        veargs[0] = offset_i
-        veargs[1] = partial_n
-        veargs[2] = vedaconvert(view(ret, s + 1))
-        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
-    end
-    VEDA.vedaArgsDestroy(veargs.handle)
-    synchronize()
-    return reduce(op, collect(ret); init)
-end
-
-@inline function JACC._parallel_reduce!(
-        reducer::JACC.ParallelReduce{VectorEngineBackend},
-        (M, N)::NTuple{2, Integer}, f, x...)
-    # TODO
-end
-
-@inline function JACC.parallel_reduce(f, ::VectorEngineBackend,
-        (M, N)::NTuple{2, Integer}, x...; op, init)
-    function kernel(offset_j, (M, N), ret, init, x...)
-        tmp = init
-        @vectorize for i in 1:M
-            for delta_j in 1:N
-                j = offset_j + delta_j
-                tmp = @inline op(tmp, f(i, j, x...))
+        @vectorize for i in 1:dims[1]
+            $(Rank == 1 ? :(i += offset) : nothing)
+            @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
+                tmp = @inline op(tmp, f(i, $(map(d -> Symbol("j_", d), 1:Rank-1)...), x...))
             end
         end
         @inbounds ret[] = tmp
         return
     end
-    function packed_kernel(offset_j, (M, N), ret, init, x...)
+end
+
+@generated function parallel_reduce_packed_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
+    quote
         tmp = init
-        @vectorize length=512 for i in 1:M
-            for delta_j in 1:N
-                j = offset_j + delta_j
-                tmp = @inline op(tmp, f(i, j, x...))
+        @vectorize length=512 for i in 1:dims[1]
+            $(Rank == 1 ? :(i += offset) : nothing)
+            @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
+                tmp = @inline op(tmp, f(i, $(map(d -> Symbol("j_", d), 1:Rank-1)...), x...))
             end
         end
         @inbounds ret[] = tmp
         return
     end
-    ns = min(N, nstreams())
-    ret = get_reduce_buffer(typeof(init), ns)
+end
+
+@inline function JACC.parallel_reduce(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...; op, init) where {Rank}
+    nkernels = min(dims[end], nstreams())
+    ret = get_reduce_buffer(typeof(init), nkernels)
     args = map(vedaconvert, (init, x...))
     veargs = VEDA.VEArgs()
+    # veargs[[0,1,2]] are set for each kernel launch
     for i in eachindex(args)
         veargs[i+2] = args[i]
     end
-    kernel_tt = Tuple{Int, Tuple{typeof(M), Int}, VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
+    kernel_tt = Tuple{typeof(f), typeof(op), Int, typeof(dims), VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
     if use_packed_vector()
-        func = vefunction(packed_kernel, kernel_tt)
+        func = vefunction(parallel_reduce_packed_kernel, kernel_tt)
     else
-        func = vefunction(kernel, kernel_tt)
+        func = vefunction(parallel_reduce_kernel, kernel_tt)
     end
-    for s in 0:ns-1
-        offset_j = s * N ÷ ns
-        partial_n = (s + 1) * N ÷ ns - offset_j
-        veargs[0] = offset_j
-        veargs[1] = (M, partial_n)
-        veargs[2] = vedaconvert(view(ret, s + 1))
-        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, s, veargs.handle)
+    for kernel_id in 0:nkernels-1
+        offset = kernel_id * dims[end] ÷ nkernels
+        partial_n = (kernel_id + 1) * dims[end] ÷ nkernels - offset
+        veargs[0] = convert(Int, offset)
+        veargs[1] = convert(typeof(dims), (dims[1:end-1]..., partial_n))
+        veargs[2] = vedaconvert(view(ret, kernel_id + 1))
+        VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, kernel_id, veargs.handle)
     end
     VEDA.vedaArgsDestroy(veargs.handle)
     synchronize()
     return reduce(op, collect(ret); init)
-end
-
-@inline function JACC.parallel_reduce(
-        f, ::VectorEngineBackend, dims::NTuple{N, Integer},
-        x...; op, init)::typeof(init) where {N}
-    ids = CartesianIndices(dims)
-    return JACC.parallel_reduce(
-        JACC.ReduceKernel1DND{typeof(init)}(), prod(dims), ids, f,
-        x...; op = op, init = init)
 end
 
 JACC.sync_workgroup(::VectorEngineBackend) = nothing
