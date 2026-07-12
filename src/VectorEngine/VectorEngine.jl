@@ -71,6 +71,10 @@ end
 end
 
 @inline function JACC.parallel_for(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...) where {Rank}
+    JACC.parallel_for(f, LaunchSpec{VectorEngineBackend}(), dims, x...)
+end
+
+@inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend}, dims::NTuple{Rank, Integer}, x...) where {Rank}
     nkernels = min(dims[end], _nstreams())
     args = map(vedaconvert, x)
     veargs = VEDA.VEArgs()
@@ -92,23 +96,20 @@ end
         VEDA.@check VEDA.vedaLaunchKernel(func.fun.handle, kernel_id, veargs.handle)
     end
     VEDA.vedaArgsDestroy(veargs.handle)
-    VectorEngine.synchronize()
-end
-
-@inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend}, dims::NTuple{Rank, Integer}, x...) where {Rank}
-    # TODO
+    if spec.sync
+        VectorEngine.synchronize()
+    end
 end
 
 mutable struct VectorEngineReduceWorkspace{T} <: JACC.ReduceWorkspace
-    tmp::VEArray{T, 1}
-    ret::VEArray{T, 1}
+    ret::T
 end
 
 @inline function JACC.reduce_workspace(::VectorEngineBackend, init::T) where {T}
-    VectorEngineReduceWorkspace{T}(VEArray{T, 1}(undef, 0), VEArray([init]))
+    VectorEngineReduceWorkspace{T}(init)
 end
 
-@inline JACC.get_result(wk::VectorEngineReduceWorkspace{T}) where {T} = collect(wk.ret)[]
+@inline JACC.get_result(wk::VectorEngineReduceWorkspace{T}) where {T} = wk.ret
 
 const _reduce_buffers = Dict{DataType, VectorEngine.VEVector}()
 @inline function _get_reduce_buffer(::Type{T}, n::Integer) where {T}
@@ -131,7 +132,9 @@ end
 end
 
 @inline function JACC._parallel_reduce!(reducer::JACC.ParallelReduce{VectorEngineBackend}, dims::NTuple{Rank, Integer}, f, x...) where {Rank}
-    # TODO
+    # Asynchronous parallel_reduce is not supported on VectorEngine
+    reducer.ret = JACC.parallel_reduce(f, VectorEngineBackend(), dims, x...; op = reducer.op, init = reducer.init)
+    return
 end
 
 @generated function _parallel_reduce_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
