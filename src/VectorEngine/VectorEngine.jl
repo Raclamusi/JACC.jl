@@ -79,8 +79,13 @@ end
     args = map(vedaconvert, x)
     veargs = VEDA.VEArgs()
     # veargs[[0,1]] are set for each kernel launch
-    for i in eachindex(args)
-        veargs[i+1] = args[i]
+    let i = 2
+        for arg in args
+            if sizeof(arg) > 0
+                veargs[i] = arg
+                i += 1
+            end
+        end
     end
     kernel_tt = Tuple{typeof(f), Int, typeof(dims), map(typeof, args)...}
     if _use_packed_vector()
@@ -171,8 +176,13 @@ end
     args = map(vedaconvert, (init, x...))
     veargs = VEDA.VEArgs()
     # veargs[[0,1,2]] are set for each kernel launch
-    for i in eachindex(args)
-        veargs[i+2] = args[i]
+    let i = 3
+        for arg in args
+            if sizeof(arg) > 0
+                veargs[i] = arg
+                i += 1
+            end
+        end
     end
     kernel_tt = Tuple{typeof(f), typeof(op), Int, typeof(dims), VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
     if _use_packed_vector()
