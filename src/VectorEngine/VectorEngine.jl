@@ -11,7 +11,6 @@ struct VectorEngineBackend end
 @inline JACC.get_backend(::Val{:vectorengine}) = VectorEngineBackend()
 
 include("array.jl")
-# include("multi.jl")
 # include("async.jl")
 # include("experimental/experimental.jl")
 
@@ -210,5 +209,7 @@ JACC.array_type(::VectorEngineBackend) = VEArray
 JACC.array(::VectorEngineBackend, x::AbstractArray) = VEArray(x)
 
 # JACC.shared(::VectorEngineBackend, x::AbstractArray) = x
+
+include("multi.jl")
 
 end
