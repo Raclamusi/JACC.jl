@@ -252,7 +252,7 @@ const _reduce_buffers = Dict{DataType, VectorEngine.VEVector}[]
 @inline function _get_reduce_buffer(::Type{T}, dev::Integer, n::Integer) where {T}
     if isempty(_reduce_buffers)
         resize!(_reduce_buffers, ndevices())
-        fill!(_reduce_buffers, Dict{DataType, VectorEngine.VEVector}())
+        _reduce_buffers .= [Dict{DataType, VectorEngine.VEVector}() for _ in 1:length(_reduce_buffers)]
     end
     buf = get!(_reduce_buffers[dev], T) do
         VEArray{T}(undef, n)
@@ -274,14 +274,12 @@ end
     ndev = cld(dims[end], partlen)
     lastlen = dims[end] - (ndev - 1) * partlen
     type = typeof(init)
-    # device_ret = Vector{SubArray{type, 1, VEArray{type, 1}, Tuple{Base.OneTo{Int64}}, true}}(undef, ndev)
-    device_ret = Vector{VEArray{type, 1}}(undef, ndev)
+    device_ret = Vector{SubArray{type, 1, VEArray{type, 1}, Tuple{Base.OneTo{Int64}}, true}}(undef, ndev)
     for dev in 1:ndev
         device_n = (dev == ndev) ? lastlen : partlen
         device!(dev - 1)
         nkernels = min(device_n, _nstreams())
-        # device_ret[dev] = _get_reduce_buffer(type, dev, nkernels)
-        device_ret[dev] = VEArray{type, 1}(undef, nkernels)
+        @inbounds device_ret[dev] = _get_reduce_buffer(type, dev, nkernels)
         args = map(vedaconvert, (init, process_param.(x, dev)...))
         veargs = VEDA.VEArgs()
         # veargs[[0,1,2]] are set for each kernel launch
@@ -313,7 +311,7 @@ end
     for dev in 1:ndev
         device!(dev - 1)
         VectorEngine.synchronize()
-        ret = reduce(op, collect(device_ret[dev]); init = ret)
+        @inbounds ret = reduce(op, collect(device_ret[dev]); init = ret)
     end
     device!(0)
     return ret
