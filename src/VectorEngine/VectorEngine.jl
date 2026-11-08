@@ -46,7 +46,7 @@ end
     JACC.parallel_for(f, spec, (N,), x...)
 end
 
-@generated function _parallel_for_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
+@generated function _parallel_for_kernel(offset, dims::NTuple{Rank, Integer}, f, x...) where {Rank}
     quote
         @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
             @vectorize for i in 1:dims[1]
@@ -58,7 +58,7 @@ end
     end
 end
 
-@generated function _parallel_for_packed_kernel(f, offset, dims::NTuple{Rank, Integer}, x...) where {Rank}
+@generated function _parallel_for_packed_kernel(offset, dims::NTuple{Rank, Integer}, f, x...) where {Rank}
     quote
         @nloops $(Rank-1) j (d -> (d == $(Rank-1)) ? (offset .+ (1:dims[end])) : (1:dims[d+1])) begin
             @vectorize length=512 for i in 1:dims[1]
@@ -76,7 +76,7 @@ end
 
 @inline function JACC.parallel_for(f, spec::LaunchSpec{VectorEngineBackend}, dims::NTuple{Rank, Integer}, x...) where {Rank}
     nkernels = min(dims[end], _nstreams())
-    args = map(vedaconvert, x)
+    args = map(vedaconvert, (f, x...))
     veargs = VEDA.VEArgs()
     # veargs[[0,1]] are set for each kernel launch
     let i = 2
@@ -87,7 +87,7 @@ end
             end
         end
     end
-    kernel_tt = Tuple{typeof(f), Int, typeof(dims), map(typeof, args)...}
+    kernel_tt = Tuple{Int, typeof(dims), map(typeof, args)...}
     if _use_packed_vector()
         func = vefunction(_parallel_for_packed_kernel, kernel_tt)
     else
@@ -142,7 +142,7 @@ end
     return
 end
 
-@generated function _parallel_reduce_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
+@generated function _parallel_reduce_kernel(offset, dims::NTuple{Rank, Integer}, ret, f, op, init, x...) where {Rank}
     quote
         tmp = init
         @vectorize for i in 1:dims[1]
@@ -156,7 +156,7 @@ end
     end
 end
 
-@generated function _parallel_reduce_packed_kernel(f, op, offset, dims::NTuple{Rank, Integer}, ret, init, x...) where {Rank}
+@generated function _parallel_reduce_packed_kernel(offset, dims::NTuple{Rank, Integer}, ret, f, op, init, x...) where {Rank}
     quote
         tmp = init
         @vectorize length=512 for i in 1:dims[1]
@@ -173,7 +173,7 @@ end
 @inline function JACC.parallel_reduce(f, ::VectorEngineBackend, dims::NTuple{Rank, Integer}, x...; op, init) where {Rank}
     nkernels = min(dims[end], _nstreams())
     ret = _get_reduce_buffer(typeof(init), nkernels)
-    args = map(vedaconvert, (init, x...))
+    args = map(vedaconvert, (f, op, init, x...))
     veargs = VEDA.VEArgs()
     # veargs[[0,1,2]] are set for each kernel launch
     let i = 3
@@ -184,7 +184,7 @@ end
             end
         end
     end
-    kernel_tt = Tuple{typeof(f), typeof(op), Int, typeof(dims), VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
+    kernel_tt = Tuple{Int, typeof(dims), VectorEngine.VEDeviceArray{typeof(init), 0, AS.Global}, map(typeof, args)...}
     if _use_packed_vector()
         func = vefunction(_parallel_reduce_packed_kernel, kernel_tt)
     else
